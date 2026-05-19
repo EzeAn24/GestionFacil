@@ -21,7 +21,6 @@ class VentanaPrincipal:
         self.pestañas.add("Ventas y Caja")
         self.tab_ventas = PestañaVentas(self.pestañas.tab("Ventas y Caja"), self)
         
-        # RESTRICCIÓN DE ROLES
         if self.rol == "Admin":
             self.pestañas.add("Inventario")
             self.pestañas.add("Estadísticas")
@@ -34,14 +33,14 @@ class VentanaPrincipal:
         if self.rol == "Admin":
             self.tab_inventario.actualizar() 
             self.tab_estadisticas.actualizar()
-        # Si es cajero, no tenemos la pestaña inventario, debemos cargar los productos directo de la BD
         else:
             prods = self.db.obtener_productos()
             self.mapa_productos.clear()
             for p in prods:
-                id_p, nom, tipo, u_pk, cant, stk_m, costo, gan_u, t_p, g_p = p
+                id_p, nom, tipo, u_pk, cant, stk_m, costo, gan_u, t_p, g_p, seccion, ctrl_stk = p
                 c_u = costo if tipo == "Unidad" else (costo / u_pk)
                 p_u = c_u * (1 + gan_u / 100); p_p = (c_u * u_pk) * (1 + g_p / 100) if t_p else 0
-                self.mapa_productos[nom] = {'id': id_p, 'costo_u': c_u, 'precio_u': p_u, 'precio_p': p_p, 'u_pack': u_pk, 'stock': cant}
+                # AHORA GUARDAMOS EL "TIPO" PARA LA LÓGICA DE VENTAS
+                self.mapa_productos[nom] = {'id': id_p, 'tipo': tipo, 'costo_u': c_u, 'precio_u': p_u, 'precio_p': p_p, 'u_pack': u_pk, 'stock': cant, 'seccion': seccion, 'controla_stock': ctrl_stk}
                 
         self.tab_ventas.actualizar()
