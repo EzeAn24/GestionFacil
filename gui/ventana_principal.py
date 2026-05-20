@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from database.controlador import ControladorDB
-from gui.pestaña_ventas import PestañaVentas
+from gui.pestaña_ventas_general import PestañaVentasGeneral
+from gui.pestaña_ventas_panaderia import PestañaVentasPanaderia
 from gui.pestaña_inventario import PestañaInventario
 from gui.pestaña_estadisticas import PestañaEstadisticas
 
@@ -18,8 +19,11 @@ class VentanaPrincipal:
         self.pestañas = ctk.CTkTabview(self.ventana)
         self.pestañas.pack(pady=10, padx=20, fill="both", expand=True)
         
-        self.pestañas.add("Ventas y Caja")
-        self.tab_ventas = PestañaVentas(self.pestañas.tab("Ventas y Caja"), self)
+        self.pestañas.add("Ventas General")
+        self.pestañas.add("Ventas Panadería")
+        
+        self.tab_ventas_gen = PestañaVentasGeneral(self.pestañas.tab("Ventas General"), self)
+        self.tab_ventas_pan = PestañaVentasPanaderia(self.pestañas.tab("Ventas Panadería"), self)
         
         if self.rol == "Admin":
             self.pestañas.add("Inventario")
@@ -40,7 +44,7 @@ class VentanaPrincipal:
                 id_p, nom, tipo, u_pk, cant, stk_m, costo, gan_u, t_p, g_p, seccion, ctrl_stk = p
                 c_u = costo if tipo == "Unidad" else (costo / u_pk)
                 p_u = c_u * (1 + gan_u / 100); p_p = (c_u * u_pk) * (1 + g_p / 100) if t_p else 0
-                # AHORA GUARDAMOS EL "TIPO" PARA LA LÓGICA DE VENTAS
                 self.mapa_productos[nom] = {'id': id_p, 'tipo': tipo, 'costo_u': c_u, 'precio_u': p_u, 'precio_p': p_p, 'u_pack': u_pk, 'stock': cant, 'seccion': seccion, 'controla_stock': ctrl_stk}
                 
-        self.tab_ventas.actualizar()
+        self.tab_ventas_gen.actualizar()
+        self.tab_ventas_pan.actualizar()

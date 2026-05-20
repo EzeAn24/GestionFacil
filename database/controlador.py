@@ -10,8 +10,7 @@ class ControladorDB:
         return sqlite3.connect(self.nombre_bd)
 
     def crear_tablas(self):
-        conexion = self.conectar()
-        cursor = conexion.cursor()
+        conexion = self.conectar(); cursor = conexion.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS inventario (
             id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, tipo TEXT, unidades_pack INTEGER,
             cantidad_unidades REAL, stock_minimo INTEGER, costo_ingresado REAL, ganancia_unidad REAL,
@@ -47,12 +46,17 @@ class ControladorDB:
         conexion = self.conectar(); cursor = conexion.cursor()
         cursor.execute("SELECT id, monto_inicial, estado, fecha_apertura FROM caja ORDER BY id DESC LIMIT 1")
         caja = cursor.fetchone()
+        
+        if not caja:
+            conexion.close()
+            return None
+            
         estimado_efectivo = 0.0
-        if caja and caja[2] == 'ABIERTA':
-            cursor.execute("SELECT SUM(monto_total) FROM ventas WHERE caja_id = ? AND metodo_pago = 'Efectivo'", (caja[0],))
-            estimado_efectivo = caja[1] + (cursor.fetchone()[0] or 0.0)
+        if caja[2] == 'ABIERTA':
+            cursor.execute("SELECT COALESCE(SUM(monto_total), 0) FROM ventas WHERE caja_id = ? AND metodo_pago = 'Efectivo'", (caja[0],))
+            estimado_efectivo = caja[1] + cursor.fetchone()[0]
         conexion.close()
-        return caja + (estimado_efectivo,) if caja else None
+        return (caja[0], caja[1], caja[2], caja[3], estimado_efectivo)
 
     def guardar_producto(self, nombre, tipo, u_pack, cant, stk_min, costo, gan_u, tiene_p, gan_p, seccion, controla_stock):
         conexion = self.conectar(); cursor = conexion.cursor()
@@ -96,7 +100,6 @@ class ControladorDB:
             u_pack = res[0]
             desc_stock = cant if tipo_v == "Unidad" else (cant * u_pack)
             cursor.execute("UPDATE inventario SET cantidad_unidades = cantidad_unidades - ? WHERE id = ?", (desc_stock, id_prod))
-            
         conexion.commit(); conexion.close()
 
     def obtener_ventas(self, fecha_filtro=None, seccion="General"):
@@ -107,65 +110,49 @@ class ControladorDB:
             query += " AND fecha LIKE ?"
             parametros.append(f"{fecha_filtro}%")
         query += " ORDER BY id DESC"
-        
         cursor.execute(query, tuple(parametros))
         ventas = cursor.fetchall(); conexion.close()
         return ventas
 
     def obtener_fechas_ventas(self):
         conexion = self.conectar(); cursor = conexion.cursor()
-        cursor.execute("SELECT DISTINCT SUBSTR(fecha, 1, 10) FROM ventas ORDER BY id DESC")
-        dias = [fila[0] for fila in cursor.fetchall()]
-        cursor.execute("SELECT DISTINCT SUBSTR(fecha, 4, 7) FROM ventas ORDER BY id DESC")
-        meses = [f"Mes: {fila[0]}" for fila in cursor.fetchall()]
+        cursor.execute("SELECT DISTINCT SUBSTR(fecha, 1, 10) FROM ventas")
+        dias = sorted([fila[0] for fila in cursor.fetchall()], reverse=True)
+        cursor.execute("SELECT DISTINCT SUBSTR(fecha, 4, 7) FROM ventas")
+        meses = sorted([f"Mes: {fila[0]}" for fila in cursor.fetchall()], reverse=True)
         conexion.close()
-        return ["Global"] + list(dict.fromkeys(meses)) + list(dict.fromkeys(dias))
+        return ["Global"] + meses + dias
 
-    # --- NUEVA LÓGICA DE ESTADÍSTICAS COMBINADA ---
     def obtener_estadisticas(self, fecha, seccion="Todas"):
         conexion = self.conectar(); cursor = conexion.cursor()
-        condiciones = []
-        parametros = []
+        condiciones = []; parametros = []
 
-        # Filtro de fecha
         if fecha != "Global":
             if fecha.startswith("Mes: "):
                 mes_anio = fecha.replace("Mes: ", "")
-                condiciones.append("fecha LIKE ?")
-                parametros.append(f"%/{mes_anio}%")
+                condiciones.append("fecha LIKE ?"); parametros.append(f"%/{mes_anio}%")
             else:
-                condiciones.append("fecha LIKE ?")
-                parametros.append(f"{fecha}%")
+                condiciones.append("fecha LIKE ?"); parametros.append(f"{fecha}%")
 
-        # Filtro de sección
         if seccion != "Todas":
-            condiciones.append("seccion = ?")
-            parametros.append(seccion)
+            condiciones.append("seccion = ?"); parametros.append(seccion)
 
-        # Construir WHERE
         where_clause = ""
         if condiciones:
             where_clause = "WHERE " + " AND ".join(condiciones)
 
-        # 1. Totales
-        cursor.execute(f"SELECT SUM(monto_total), SUM(ganancia_real) FROM ventas {where_clause}", tuple(parametros))
-        totales = cursor.fetchone(); ingresos, ganancia = totales[0] or 0.0, totales[1] or 0.0
+        cursor.execute(f"SELECT COALESCE(SUM(monto_total), 0), COALESCE(SUM(ganancia_real), 0) FROM ventas {where_clause}", tuple(parametros))
+        totales = cursor.fetchone(); ingresos, ganancia = totales[0], totales[1]
 
-        # 2. Efectivo
-        cond_efvo = list(condiciones) + ["metodo_pago = 'Efectivo'"]
-        param_efvo = list(parametros) + ["Efectivo"]
-        where_efvo = "WHERE " + " AND ".join(cond_efvo)
-        cursor.execute(f"SELECT SUM(monto_total) FROM ventas {where_efvo}", tuple(param_efvo))
-        efectivo = cursor.fetchone()[0] or 0.0
+        # AQUÍ ESTÁ EL ARREGLO DEL BUG DE LOS BINDINGS (Pusimos el = ? para que acepte el parámetro)
+        cond_efvo = list(condiciones) + ["metodo_pago = ?"]; param_efvo = list(parametros) + ["Efectivo"]
+        cursor.execute(f"SELECT COALESCE(SUM(monto_total), 0) FROM ventas WHERE " + " AND ".join(cond_efvo), tuple(param_efvo))
+        efectivo = cursor.fetchone()[0]
 
-        # 3. Mercado Pago
-        cond_mp = list(condiciones) + ["metodo_pago = 'Mercado Pago'"]
-        param_mp = list(parametros) + ["Mercado Pago"]
-        where_mp = "WHERE " + " AND ".join(cond_mp)
-        cursor.execute(f"SELECT SUM(monto_total) FROM ventas {where_mp}", tuple(param_mp))
-        mp = cursor.fetchone()[0] or 0.0
+        cond_mp = list(condiciones) + ["metodo_pago = ?"]; param_mp = list(parametros) + ["Mercado Pago"]
+        cursor.execute(f"SELECT COALESCE(SUM(monto_total), 0) FROM ventas WHERE " + " AND ".join(cond_mp), tuple(param_mp))
+        mp = cursor.fetchone()[0]
 
-        # 4. Detalle
         cursor.execute(f"""SELECT nombre, tipo_venta, SUM(cantidad), SUM(monto_total), SUM(ganancia_real) 
             FROM ventas {where_clause} GROUP BY producto_id, nombre, tipo_venta ORDER BY SUM(monto_total) DESC""", tuple(parametros))
         detalle_productos = cursor.fetchall()

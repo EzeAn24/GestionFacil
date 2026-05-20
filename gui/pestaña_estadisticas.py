@@ -11,7 +11,7 @@ class PestañaEstadisticas:
         marco_top.pack(pady=10, fill="x", padx=20)
         
         ctk.CTkLabel(marco_top, text="Sección:", font=("Roboto", 14, "bold")).pack(side="left", padx=5)
-        self.opt_seccion_stats = ctk.CTkOptionMenu(marco_top, values=["Todas", "Negocio General", "Panadería"], width=150, command=lambda e: self.actualizar())
+        self.opt_seccion_stats = ctk.CTkOptionMenu(marco_top, values=["Todas", "General", "Panadería"], width=150, command=lambda e: self.actualizar())
         self.opt_seccion_stats.pack(side="left", padx=5)
 
         ctk.CTkLabel(marco_top, text="Período:", font=("Roboto", 14, "bold")).pack(side="left", padx=(20, 5))
@@ -35,14 +35,13 @@ class PestañaEstadisticas:
         self.lbl_kpi_efectivo = crear_tarjeta(marco_kpi, "En Efectivo", "#f39c12")
         self.lbl_kpi_mp = crear_tarjeta(marco_kpi, "En Mercado Pago", "#9b59b6")
 
-        ctk.CTkLabel(self.marco_base, text="Desglose de Productos Vendidos", font=("Roboto", 18, "bold")).pack(pady=(20, 5))
+        ctk.CTkLabel(self.marco_base, text="Desglose de Productos", font=("Roboto", 18, "bold")).pack(pady=(20, 5))
         self.marco_tabla = ctk.CTkScrollableFrame(self.marco_base, width=1000, height=300)
         self.marco_tabla.pack(pady=5, padx=20, fill="both", expand=True)
 
     def actualizar(self):
         fechas = self.app.db.obtener_fechas_ventas()
         
-        # Filtramos la fecha seleccionada
         if len(fechas) > 1:
             self.opt_fechas_stats.configure(values=fechas)
             fecha_seleccionada = self.opt_fechas_stats.get()
@@ -54,15 +53,7 @@ class PestañaEstadisticas:
             self.opt_fechas_stats.set("Sin ventas")
             fecha_seleccionada = "VACIO"
 
-        # CORRECCIÓN DE MAPEADO: Transformamos el texto de la UI al de la Base de Datos
-        seccion_ui = self.opt_seccion_stats.get()
-        if seccion_ui == "Negocio General":
-            sec_db = "General"
-        elif seccion_ui == "Panadería":
-            sec_db = "Panadería"
-        else:
-            sec_db = "Todas"
-
+        sec_db = self.opt_seccion_stats.get()
         self.cargar_datos(fecha_seleccionada, sec_db)
 
     def cargar_datos(self, fecha_seleccionada, seccion_seleccionada):
@@ -78,13 +69,12 @@ class PestañaEstadisticas:
         self.lbl_kpi_ingresos.configure(text=f"${ingresos:,.2f}"); self.lbl_kpi_ganancia.configure(text=f"${ganancia:,.2f}")
         self.lbl_kpi_efectivo.configure(text=f"${efectivo:,.2f}"); self.lbl_kpi_mp.configure(text=f"${mp:,.2f}")
 
-        encabezados = ["Producto Vendido", "Cant. Total Vendida", "Ingreso Generado", "Ganancia Aportada"]
+        encabezados = ["Producto", "Cant. Vendida", "Ingreso Generado", "Ganancia Aportada"]
         for c, h in enumerate(encabezados): ctk.CTkLabel(self.marco_tabla, text=h, font=("Roboto", 14, "bold"), width=200).grid(row=0, column=c, pady=10)
 
         for i, fila in enumerate(detalle, 1):
             nom, tipo_v, cant, monto, gan = fila
             
-            # ESCUDO MATEMÁTICO
             cant_flotante = float(cant)
             cant_str = f"{int(cant_flotante)}" if cant_flotante.is_integer() else f"{cant_flotante:.3f}"
             texto_cant = f"{cant_str} Pack(s)" if tipo_v == "Pack" else f"{cant_str} medidas"
